@@ -41,7 +41,7 @@ def process_night_action(
     role = acting_player.original_role
     match role:
         case RoleType.WEREWOLF:
-            return _werewolf_action(game, acting_player)
+            return _werewolf_action(game, acting_player, targets)
         case RoleType.MINION:
             return _minion_action(game)
         case RoleType.SEER:
@@ -165,13 +165,21 @@ def build_action_prompt(game: Game, player: Player) -> dict:
 # Individual role action helpers
 # ---------------------------------------------------------------------------
 
-def _werewolf_action(game: Game, acting_player: Player) -> dict:
+def _werewolf_action(game: Game, acting_player: Player, targets: list[str]) -> dict:
     teammates = [
         {"player_id": pid, "name": p.name}
         for pid, p in game.players.items()
         if p.original_role == RoleType.WEREWOLF and pid != acting_player.player_id
     ]
-    return {"werewolf_teammates": teammates}
+    result: dict = {"werewolf_teammates": teammates}
+
+    # Lone wolf: if they peeked at a center card, reveal it
+    if not teammates and targets:
+        for t in targets:
+            if t.startswith("center_"):
+                idx = int(t.split("_")[1])
+                result["peeked_center"] = {"slot": t, "role": game.center_cards[idx]}
+    return result
 
 
 def _minion_action(game: Game) -> dict:

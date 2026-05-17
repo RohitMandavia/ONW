@@ -110,11 +110,11 @@
 <div id="toast"></div>
 
 <script type="module" src="/js/game.js"></script>
-<script>
-  // Reset button on day screen
-  document.getElementById("reset-btn-day").addEventListener("click", async () => {
-    if (!confirm("Reset the game?")) return;
-    await fetch("/api/lobby/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+<script type="module">
+  import * as socket from "/js/socket.js";
+  document.getElementById("reset-btn-day").addEventListener("click", () => {
+    if (!confirm("Reset the game? Players will stay in the lobby.")) return;
+    socket.send({ type: "reset" });
   });
 </script>
 </body>

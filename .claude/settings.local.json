@@ -8,7 +8,8 @@
       "Bash(curl -s -X POST http://localhost:8765/api/lobby/join -H \"Content-Type: application/json\" -d '{\"player_name\":\"Alice\"}')",
       "Bash(python3 -m json.tool)",
       "Bash(curl -s http://localhost:8765/api/lobby/state)",
-      "Bash(kill %1)"
+      "Bash(kill %1)",
+      "Bash(ipconfig getifaddr *)"
     ]
   }
 }

@@ -185,7 +185,10 @@ async def _handle_reset() -> None:
         _day_timer_task = None
 
     game_manager.reset()
-    await ws_manager.broadcast({"type": "game_reset"})
+    await ws_manager.broadcast({
+        "type": "game_reset",
+        "players": _serialise_players(),
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -281,8 +284,9 @@ async def _handle_night_action(player_id: str, targets: list[str]) -> None:
     if not player.original_role:
         return
 
-    # Werewolf lone-wolf center peek is optional — skip if no targets
+    # Lone wolf may skip the center peek
     if player.original_role == RoleType.WEREWOLF and not targets:
+        game.night_results[player_id] = {"werewolf_teammates": [], "skipped_peek": True}
         player.night_action_done = True
         return
 

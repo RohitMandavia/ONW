@@ -62,10 +62,16 @@ class GameManager:
     # ------------------------------------------------------------------
 
     def reset(self) -> None:
-        """Wipe the game entirely and return to an empty lobby."""
-        self._game = Game()
-        self._players = {}
-        self._next_seat = 0
+        """Reset game state while keeping all current players in the lobby."""
+        for player in self._players.values():
+            player.original_role = None
+            player.current_role = None
+            player.vote_target = None
+            player.night_action_done = False
+
+        new_game = Game()
+        new_game.players = dict(self._players)
+        self._game = new_game
 
     # ------------------------------------------------------------------
     # Accessors

@@ -158,8 +158,9 @@ function renderRolePicker() {
 
   AVAILABLE_ROLES.forEach(role => {
     const btn = document.createElement("button");
+    const wCount = role === "werewolf" ? selectedRoles.filter(r => r === "werewolf").length : 0;
     btn.className = "role-toggle" + (isRoleSelected(role) ? " selected" : "");
-    btn.textContent = ROLE_DESCRIPTIONS[role];
+    btn.textContent = (role === "werewolf" && wCount === 2) ? "🐺 Werewolf x2" : ROLE_DESCRIPTIONS[role];
     btn.dataset.role = role;
     btn.addEventListener("click", () => toggleRole(role, btn));
     grid.appendChild(btn);
@@ -174,28 +175,48 @@ function isRoleSelected(role) {
 }
 
 function toggleRole(role, btn) {
-  if (isRoleSelected(role)) {
-    selectedRoles = selectedRoles.filter(r => r !== role);
-    btn.classList.remove("selected");
+  if (role === "werewolf") {
+    // Cycle: 0 werewolves → 1 → 2 → 0
+    const count = selectedRoles.filter(r => r === "werewolf").length;
+    selectedRoles = selectedRoles.filter(r => r !== "werewolf" && r !== "villager");
+    const newCount = (count + 1) % 3;
+    for (let i = 0; i < newCount; i++) selectedRoles.push("werewolf");
+    btn.classList.toggle("selected", newCount > 0);
+    btn.textContent = newCount === 2 ? "🐺 Werewolf x2" : ROLE_DESCRIPTIONS["werewolf"];
   } else {
-    selectedRoles.push(role);
-    btn.classList.add("selected");
+    if (isRoleSelected(role)) {
+      selectedRoles = selectedRoles.filter(r => r !== role && r !== "villager");
+      btn.classList.remove("selected");
+    } else {
+      selectedRoles = selectedRoles.filter(r => r !== "villager");
+      selectedRoles.push(role);
+      btn.classList.add("selected");
+    }
   }
-  updateVillagerCount();
+  autoFillVillagers();
+}
+
+// Recalculate villager count to fill remaining slots, update selectedRoles, then sync UI.
+function autoFillVillagers() {
+  const nonVillager = selectedRoles.filter(r => r !== "villager").length;
+  const total = players.length + 3;
+  villagerCount = Math.max(0, total - nonVillager);
+  selectedRoles = selectedRoles.filter(r => r !== "villager");
+  for (let i = 0; i < villagerCount; i++) selectedRoles.push("villager");
+  document.getElementById("villager-count-label").textContent = villagerCount;
   updateRoleCountMsg();
+  updateStartBtn();
   pushRoles();
 }
 
 function updateVillagerCount() {
-  const nonVillager = selectedRoles.filter(r => r !== "villager").length;
-  const total = players.length + 3;
-  villagerCount = Math.max(0, total - nonVillager);
+  villagerCount = selectedRoles.filter(r => r === "villager").length;
   document.getElementById("villager-count-label").textContent = villagerCount;
 }
 
 function updateRoleCountMsg() {
   const total = players.length + 3;
-  const current = selectedRoles.filter(r => r !== "villager").length + villagerCount;
+  const current = selectedRoles.length;
   const msg = document.getElementById("role-count-msg");
   msg.textContent = `${current} / ${total} roles selected`;
   msg.style.color = current === total ? "#4caf50" : "var(--accent)";
@@ -214,15 +235,13 @@ function syncVillagerRoles() {
   for (let i = 0; i < villagerCount; i++) selectedRoles.push("villager");
   document.getElementById("villager-count-label").textContent = villagerCount;
   updateRoleCountMsg();
+  updateStartBtn();
   pushRoles();
 }
 
-async function pushRoles() {
-  try {
-    await api.setRoles(selectedRoles);
-  } catch {
-    // silently ignore validation errors while user is still picking
-  }
+function pushRoles() {
+  // Send via WebSocket so all players see the updated roles instantly
+  socket.send({ type: "configure_roles", roles: selectedRoles });
 }
 
 function updateStartBtn() {
@@ -236,11 +255,9 @@ document.getElementById("start-btn").addEventListener("click", () => {
   socket.send({ type: "start_game" });
 });
 
-document.getElementById("reset-btn-lobby").addEventListener("click", async () => {
-  if (!confirm("Reset the game and clear all players?")) return;
-  try {
-    await api.reset();
-  } catch (e) { showToast(e.message); }
+document.getElementById("reset-btn-lobby").addEventListener("click", () => {
+  if (!confirm("Reset the game? Players will stay in the lobby.")) return;
+  socket.send({ type: "reset" });
 });
 
 // ---------------------------------------------------------------------------
@@ -523,10 +540,8 @@ function renderResultsScreen(data) {
   }
 }
 
-document.getElementById("play-again-btn").addEventListener("click", async () => {
-  try {
-    await api.reset();
-  } catch (e) { showToast(e.message); }
+document.getElementById("play-again-btn").addEventListener("click", () => {
+  socket.send({ type: "reset" });
 });
 
 // ---------------------------------------------------------------------------
@@ -606,7 +621,14 @@ function registerSocketHandlers() {
     const r = data.revealed || {};
     if (r.werewolf_teammates !== undefined) {
       const names = r.werewolf_teammates.map(w => w.name);
-      msg.textContent = names.length ? `Pack: ${names.join(", ")}` : "You are the lone wolf.";
+      if (names.length) {
+        msg.textContent = `Pack: ${names.join(", ")}`;
+      } else if (r.peeked_center) {
+        const role = r.peeked_center.role;
+        msg.textContent = `You are the lone wolf. You peeked: ${ROLE_DESCRIPTIONS[role] || role}`;
+      } else {
+        msg.textContent = "You are the lone wolf.";
+      }
     } else if (r.werewolves !== undefined) {
       const names = r.werewolves.map(w => w.name);
       msg.textContent = names.length ? `Werewolves: ${names.join(", ")}` : "No werewolves in play!";
@@ -660,17 +682,18 @@ function registerSocketHandlers() {
     renderResultsScreen(data);
   });
 
-  socket.on("game_reset", () => {
+  socket.on("game_reset", (data) => {
     myRole = null;
-    mySeat = null;
     nightSelections = [];
     currentPrompt = null;
     myVoteTarget = null;
+    selectedRoles = [];
     if (dayTimerInterval) clearInterval(dayTimerInterval);
 
-    // Reload fresh — the player is gone from server, need to rejoin
-    clearSession();
-    location.reload();
+    // Players are kept — just go back to lobby
+    players = data.players || players;
+    renderLobby();
+    switchScreen("lobby");
   });
 
   socket.on("error", (data) => {

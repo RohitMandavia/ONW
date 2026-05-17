@@ -216,28 +216,46 @@ async def run_night_phase() -> None:
             })
             continue
 
-        # For roles with no interactive action, mark done immediately
+        # Villagers: auto-complete, no review needed
         if role in NO_ACTION_ROLES:
             for p in acting:
                 p.night_action_done = True
-        else:
+
+        # Roles that are auto-computed (no card selection) but player must read and tap Continue
+        elif role in {RoleType.MINION, RoleType.INSOMNIAC}:
             for p in acting:
                 prompt = build_action_prompt(game, p)
-                await ws_manager.send(p.player_id, {
-                    "type": "night_action_prompt",
-                    **prompt,
-                })
-
-        await _wait_for_actions(acting, timeout=45)
-
-        # Send results to each acting player
-        for p in acting:
-            result = game.night_results.get(p.player_id)
-            if result is not None:
+                await ws_manager.send(p.player_id, {"type": "night_action_prompt", **prompt})
+                result = process_night_action(game, p, [])
+                game.night_results[p.player_id] = result
                 await ws_manager.send(p.player_id, {
                     "type": "night_action_result",
                     "revealed": result,
+                    "needs_ready": True,
                 })
+
+        # Werewolves: auto-reveal teammates; lone wolf picks a card
+        elif role == RoleType.WEREWOLF:
+            for p in acting:
+                prompt = build_action_prompt(game, p)
+                await ws_manager.send(p.player_id, {"type": "night_action_prompt", **prompt})
+                if not prompt.get("lone_wolf", False):
+                    result = process_night_action(game, p, [])
+                    game.night_results[p.player_id] = result
+                    await ws_manager.send(p.player_id, {
+                        "type": "night_action_result",
+                        "revealed": result,
+                        "needs_ready": True,
+                    })
+                # Lone wolf: waits for _handle_night_action (card pick)
+
+        # All other roles: player selects a target, then sees result and taps Continue
+        else:
+            for p in acting:
+                prompt = build_action_prompt(game, p)
+                await ws_manager.send(p.player_id, {"type": "night_action_prompt", **prompt})
+
+        await _wait_for_actions(acting, timeout=60)
 
         await asyncio.sleep(1)
         await ws_manager.broadcast({
@@ -283,16 +301,31 @@ async def _handle_night_action(player_id: str, targets: list[str]) -> None:
         return
     if not player.original_role:
         return
+    # Already processed (auto-compute roles): ignore
+    if player_id in game.night_results:
+        return
 
-    # Lone wolf may skip the center peek
+    # Lone wolf skipping the peek: just show "lone wolf" message and wait for Continue
     if player.original_role == RoleType.WEREWOLF and not targets:
-        game.night_results[player_id] = {"werewolf_teammates": [], "skipped_peek": True}
-        player.night_action_done = True
+        result: dict = {"werewolf_teammates": [], "skipped_peek": True}
+        game.night_results[player_id] = result
+        await ws_manager.send(player_id, {
+            "type": "night_action_result",
+            "revealed": result,
+            "needs_ready": True,
+        })
         return
 
     result = process_night_action(game, player, targets)
     game.night_results[player_id] = result
-    player.night_action_done = True
+
+    # Send result immediately; player taps Continue (night_skip) to proceed
+    await ws_manager.send(player_id, {
+        "type": "night_action_result",
+        "revealed": result,
+        "needs_ready": True,
+    })
+    # night_action_done is set by _handle_night_skip (the Continue tap)
 
 
 async def _handle_night_skip(player_id: str) -> None:
@@ -435,6 +468,7 @@ async def _send_state_snapshot(player_id: str) -> None:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _serialise_players() -> list[dict]:
     return [

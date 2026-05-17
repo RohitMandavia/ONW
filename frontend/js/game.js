@@ -158,11 +158,9 @@ function renderRolePicker() {
 
   AVAILABLE_ROLES.forEach(role => {
     const btn = document.createElement("button");
-    const wCount = role === "werewolf" ? selectedRoles.filter(r => r === "werewolf").length : 0;
-    btn.className = "role-toggle" + (isRoleSelected(role) ? " selected" : "");
-    btn.textContent = (role === "werewolf" && wCount === 2) ? "🐺 Werewolf x2" : ROLE_DESCRIPTIONS[role];
     btn.dataset.role = role;
     btn.addEventListener("click", () => toggleRole(role, btn));
+    _updateWerewolfBtn(btn, role);
     grid.appendChild(btn);
   });
 
@@ -174,6 +172,19 @@ function isRoleSelected(role) {
   return selectedRoles.includes(role);
 }
 
+function _updateWerewolfBtn(btn, role) {
+  if (role !== "werewolf") {
+    btn.className = "role-toggle" + (isRoleSelected(role) ? " selected" : "");
+    btn.textContent = ROLE_DESCRIPTIONS[role];
+    return;
+  }
+  const count = selectedRoles.filter(r => r === "werewolf").length;
+  btn.className = "role-toggle" + (count > 0 ? " selected" : "");
+  if (count === 0)      btn.textContent = "🐺 Werewolf";
+  else if (count === 1) btn.textContent = "🐺 Werewolf ×1 → tap for ×2";
+  else                  btn.textContent = "🐺 Werewolf ×2 → tap to remove";
+}
+
 function toggleRole(role, btn) {
   if (role === "werewolf") {
     // Cycle: 0 werewolves → 1 → 2 → 0
@@ -181,8 +192,7 @@ function toggleRole(role, btn) {
     selectedRoles = selectedRoles.filter(r => r !== "werewolf" && r !== "villager");
     const newCount = (count + 1) % 3;
     for (let i = 0; i < newCount; i++) selectedRoles.push("werewolf");
-    btn.classList.toggle("selected", newCount > 0);
-    btn.textContent = newCount === 2 ? "🐺 Werewolf x2" : ROLE_DESCRIPTIONS["werewolf"];
+    _updateWerewolfBtn(btn, "werewolf");
   } else {
     if (isRoleSelected(role)) {
       selectedRoles = selectedRoles.filter(r => r !== role && r !== "villager");
@@ -405,6 +415,10 @@ function handleCardClick(targetId, cardEl) {
 }
 
 document.getElementById("action-submit").addEventListener("click", () => {
+  const submitBtn = document.getElementById("action-submit");
+  // If the button has been repurposed as a Ready/Continue button by night_action_result, skip default logic
+  if (submitBtn.dataset.mode === "ready") return;
+
   if (!currentPrompt) return;
 
   const isSeer = myRole === "seer";
@@ -421,8 +435,8 @@ document.getElementById("action-submit").addEventListener("click", () => {
   }
 
   socket.send({ type: "night_action", targets: nightSelections });
-  document.getElementById("action-submit").disabled = true;
-  document.getElementById("action-message").textContent = "Waiting for results...";
+  submitBtn.disabled = true;
+  document.getElementById("action-message").textContent = "Waiting for result...";
 });
 
 function renderRevealInfo(data) {
@@ -599,9 +613,13 @@ function registerSocketHandlers() {
 
   socket.on("night_phase_begin", (data) => {
     document.getElementById("narrator-text").textContent = data.message || "";
-    // Reset action panel
     document.getElementById("action-panel").style.display = "none";
     document.getElementById("action-waiting").style.display = "block";
+    const submitBtn = document.getElementById("action-submit");
+    submitBtn.dataset.mode = "";
+    submitBtn.textContent = "Confirm";
+    submitBtn.onclick = null;
+    document.getElementById("skip-peek-btn")?.remove();
     nightSelections = [];
     currentPrompt = null;
   });
@@ -617,17 +635,22 @@ function registerSocketHandlers() {
     panel.style.display = "block";
     document.getElementById("action-waiting").style.display = "none";
     const msg = document.getElementById("action-message");
+    const submitBtn = document.getElementById("action-submit");
 
     const r = data.revealed || {};
     if (r.werewolf_teammates !== undefined) {
       const names = r.werewolf_teammates.map(w => w.name);
       if (names.length) {
-        msg.textContent = `Pack: ${names.join(", ")}`;
+        msg.textContent = `Your fellow werewolf: ${names.join(", ")}`;
       } else if (r.peeked_center) {
         const role = r.peeked_center.role;
-        msg.textContent = `You are the lone wolf. You peeked: ${ROLE_DESCRIPTIONS[role] || role}`;
+        msg.textContent = `You are the lone wolf. Center card: ${ROLE_DESCRIPTIONS[role] || role}`;
       } else {
         msg.textContent = "You are the lone wolf.";
+      }
+      // Lone wolf: add a Skip peek button alongside the card picker
+      if (r.lone_wolf === false && !r.peeked_center) {
+        _addSkipPeekButton();
       }
     } else if (r.werewolves !== undefined) {
       const names = r.werewolves.map(w => w.name);
@@ -652,8 +675,41 @@ function registerSocketHandlers() {
     } else if (r.message) {
       msg.textContent = r.message;
     }
-    document.getElementById("action-submit").style.display = "none";
+
+    // Show Continue button for all results that need acknowledgement
+    if (data.needs_ready) {
+      _showContinueButton(submitBtn);
+    } else {
+      submitBtn.style.display = "none";
+    }
   });
+
+function _showContinueButton(btn) {
+  btn.dataset.mode = "ready";
+  btn.textContent = "Continue";
+  btn.style.display = "block";
+  btn.disabled = false;
+  btn.onclick = () => {
+    socket.send({ type: "night_skip" });
+    btn.disabled = true;
+    btn.textContent = "Waiting...";
+  };
+}
+
+function _addSkipPeekButton() {
+  // Add a secondary "Skip peek" option for the lone wolf
+  if (document.getElementById("skip-peek-btn")) return;
+  const btn = document.createElement("button");
+  btn.id = "skip-peek-btn";
+  btn.className = "btn-secondary mt8";
+  btn.textContent = "Skip peek";
+  btn.addEventListener("click", () => {
+    socket.send({ type: "night_skip" });
+    btn.disabled = true;
+    btn.textContent = "Waiting...";
+  });
+  document.getElementById("action-panel").appendChild(btn);
+}
 
   socket.on("night_role_done", (data) => {
     document.getElementById("narrator-text").textContent = data.message || "...";

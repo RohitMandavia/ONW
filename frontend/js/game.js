@@ -517,17 +517,23 @@ function castVote(targetId, btn) {
 // ---------------------------------------------------------------------------
 function renderResultsScreen(data) {
   const banner = document.getElementById("win-banner");
-  if (data.win_team === "village") {
-    banner.textContent = "🏡 VILLAGE WINS";
+  const myFinalRole = data.final_roles?.[myPlayerId];
+  const iAmWerewolf = myFinalRole === "werewolf";
+  const iWon = (data.win_team === "werewolf" && iAmWerewolf) ||
+               (data.win_team === "village" && !iAmWerewolf);
+
+  if (iWon) {
+    banner.textContent = "🎉 You Win!";
     banner.className = "village";
   } else {
-    banner.textContent = "🐺 WEREWOLVES WIN";
+    banner.textContent = "💀 You Lose";
     banner.className = "werewolf";
   }
 
+  const teamLabel = data.win_team === "werewolf" ? "Werewolves win" : "Village wins";
   const eliminatedNames = (data.eliminated || []).map(id => data.player_names?.[id] || id);
-  document.getElementById("eliminated-text").textContent =
-    eliminatedNames.length ? `Eliminated: ${eliminatedNames.join(", ")}` : "No one was eliminated.";
+  const eliminatedText = eliminatedNames.length ? `Eliminated: ${eliminatedNames.join(", ")}` : "No one was eliminated.";
+  document.getElementById("eliminated-text").textContent = `${teamLabel} — ${eliminatedText}`;
 
   const tbody = document.getElementById("results-tbody");
   tbody.innerHTML = "";
@@ -650,7 +656,7 @@ function registerSocketHandlers() {
       }
       // Lone wolf: add a Skip peek button alongside the card picker
       if (r.lone_wolf === false && !r.peeked_center) {
-        _addSkipPeekButton();
+        addSkipPeekButton();
       }
     } else if (r.werewolves !== undefined) {
       const names = r.werewolves.map(w => w.name);
@@ -678,38 +684,11 @@ function registerSocketHandlers() {
 
     // Show Continue button for all results that need acknowledgement
     if (data.needs_ready) {
-      _showContinueButton(submitBtn);
+      showContinueButton(submitBtn);
     } else {
       submitBtn.style.display = "none";
     }
   });
-
-function _showContinueButton(btn) {
-  btn.dataset.mode = "ready";
-  btn.textContent = "Continue";
-  btn.style.display = "block";
-  btn.disabled = false;
-  btn.onclick = () => {
-    socket.send({ type: "night_skip" });
-    btn.disabled = true;
-    btn.textContent = "Waiting...";
-  };
-}
-
-function _addSkipPeekButton() {
-  // Add a secondary "Skip peek" option for the lone wolf
-  if (document.getElementById("skip-peek-btn")) return;
-  const btn = document.createElement("button");
-  btn.id = "skip-peek-btn";
-  btn.className = "btn-secondary mt8";
-  btn.textContent = "Skip peek";
-  btn.addEventListener("click", () => {
-    socket.send({ type: "night_skip" });
-    btn.disabled = true;
-    btn.textContent = "Waiting...";
-  });
-  document.getElementById("action-panel").appendChild(btn);
-}
 
   socket.on("night_role_done", (data) => {
     document.getElementById("narrator-text").textContent = data.message || "...";
@@ -760,6 +739,35 @@ function _addSkipPeekButton() {
 function currentScreen() {
   const active = document.querySelector(".screen.active");
   return active ? active.id.replace("screen-", "") : null;
+}
+
+// ---------------------------------------------------------------------------
+// Night UI helpers
+// ---------------------------------------------------------------------------
+function showContinueButton(btn) {
+  btn.dataset.mode = "ready";
+  btn.textContent = "Continue";
+  btn.style.display = "block";
+  btn.disabled = false;
+  btn.onclick = () => {
+    socket.send({ type: "night_skip" });
+    btn.disabled = true;
+    btn.textContent = "Waiting...";
+  };
+}
+
+function addSkipPeekButton() {
+  if (document.getElementById("skip-peek-btn")) return;
+  const btn = document.createElement("button");
+  btn.id = "skip-peek-btn";
+  btn.className = "btn-secondary mt8";
+  btn.textContent = "Skip peek";
+  btn.addEventListener("click", () => {
+    socket.send({ type: "night_skip" });
+    btn.disabled = true;
+    btn.textContent = "Waiting...";
+  });
+  document.getElementById("action-panel").appendChild(btn);
 }
 
 // ---------------------------------------------------------------------------

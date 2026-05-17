@@ -202,7 +202,7 @@ async def run_night_phase() -> None:
         await ws_manager.broadcast({
             "type": "night_phase_begin",
             "active_role": role.value,
-            "message": NARRATOR_SCRIPTS[role]["wake"],
+            "message": "🌙 Night is in progress... wait for your turn.",
         })
 
         acting = [p for p in game.players.values() if p.original_role == role]
@@ -261,7 +261,7 @@ async def run_night_phase() -> None:
         await ws_manager.broadcast({
             "type": "night_role_done",
             "active_role": role.value,
-            "message": NARRATOR_SCRIPTS[role]["sleep"],
+            "message": "🌙 Night is in progress... wait for your turn.",
         })
         await asyncio.sleep(1)
 

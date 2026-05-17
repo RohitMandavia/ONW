@@ -30,6 +30,12 @@ const ROLE_DESCRIPTIONS = {
   hunter: "🏹 Hunter",
 };
 
+const CENTER_LABELS = ["Left", "Middle", "Right"];
+function centerLabel(key) {
+  const idx = parseInt(key.split("_")[1]);
+  return isNaN(idx) ? key : CENTER_LABELS[idx];
+}
+
 const ROLE_EMOJI = {
   werewolf: "🐺", villager: "👤", seer: "👁", robber: "🥷",
   troublemaker: "😈", drunk: "🍺", insomniac: "😴", minion: "🎭", hunter: "🏹",
@@ -370,7 +376,7 @@ function renderCenterCards(prompt = null) {
 
     const label = document.createElement("div");
     label.className = "center-label";
-    label.textContent = `Center ${i + 1}`;
+    label.textContent = CENTER_LABELS[i];
 
     wrap.appendChild(card);
     wrap.appendChild(label);
@@ -556,7 +562,7 @@ function renderResultsScreen(data) {
   // Show center cards
   const centerRow = document.getElementById("center-results");
   if (data.center_cards) {
-    centerRow.textContent = "Center cards: " + data.center_cards.map(r => `${ROLE_EMOJI[r] || ""} ${r}`).join(", ");
+    centerRow.textContent = "Center — " + data.center_cards.map((r, i) => `${CENTER_LABELS[i]}: ${ROLE_EMOJI[r] || ""} ${r}`).join(", ");
   }
 }
 
@@ -649,8 +655,9 @@ function registerSocketHandlers() {
       if (names.length) {
         msg.textContent = `Your fellow werewolf: ${names.join(", ")}`;
       } else if (r.peeked_center) {
+        const pos = centerLabel(r.peeked_center.slot);
         const role = r.peeked_center.role;
-        msg.textContent = `You are the lone wolf. Center card: ${ROLE_DESCRIPTIONS[role] || role}`;
+        msg.textContent = `You are the lone wolf. ${pos} card: ${ROLE_DESCRIPTIONS[role] || role}`;
       } else {
         msg.textContent = "You are the lone wolf.";
       }
@@ -665,11 +672,11 @@ function registerSocketHandlers() {
       const c = r.player_card;
       msg.textContent = `${c.name}'s card: ${ROLE_DESCRIPTIONS[c.role] || c.role}`;
     } else if (r.center_cards) {
-      const parts = Object.entries(r.center_cards).map(([k, v]) => `${k.replace("_", " ")}: ${ROLE_DESCRIPTIONS[v] || v}`);
+      const parts = Object.entries(r.center_cards).map(([k, v]) => `${centerLabel(k)}: ${ROLE_DESCRIPTIONS[v] || v}`);
       msg.textContent = parts.join(", ");
     } else if (r.center_card) {
       const [[k, v]] = Object.entries(r.center_card);
-      msg.textContent = `${k.replace("_", " ")}: ${ROLE_DESCRIPTIONS[v] || v}`;
+      msg.textContent = `${centerLabel(k)}: ${ROLE_DESCRIPTIONS[v] || v}`;
     } else if (r.your_new_role) {
       msg.textContent = `You stole ${r.swapped_with}'s card. You are now: ${ROLE_DESCRIPTIONS[r.your_new_role] || r.your_new_role}`;
       myRole = r.your_new_role;
@@ -690,8 +697,8 @@ function registerSocketHandlers() {
     }
   });
 
-  socket.on("night_role_done", (data) => {
-    document.getElementById("narrator-text").textContent = data.message || "...";
+  socket.on("night_role_done", () => {
+    // No-op: narrator text stays generic; don't reveal which role just finished
   });
 
   socket.on("day_phase_begin", (data) => {

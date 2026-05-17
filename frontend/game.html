@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>One Night Werewolf</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<!-- ===== JOIN (fallback if no session) ===== -->
+<div id="screen-join" class="screen">
+  <h1>🐺 One Night Werewolf</h1>
+  <p class="subtitle">Session expired — enter your name to rejoin</p>
+  <input id="name-input" type="text" placeholder="Your name" maxlength="20" autocomplete="off" />
+  <button id="join-btn" class="btn-primary">Join Game</button>
+</div>
+
+<!-- ===== LOBBY ===== -->
+<div id="screen-lobby" class="screen">
+  <h1>🐺 Lobby</h1>
+
+  <div class="card">
+    <h3>Players</h3>
+    <ul id="player-list"></ul>
+  </div>
+
+  <div class="card" id="role-picker">
+    <h3>Roles</h3>
+    <p id="role-count-msg" class="role-count-msg">0 / 0 roles selected</p>
+    <div id="role-grid" class="role-grid"></div>
+    <div class="villager-count">
+      <span>👤 Villagers</span>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button class="counter-btn" id="villager-minus">−</button>
+        <span id="villager-count-label">0</span>
+        <button class="counter-btn" id="villager-plus">+</button>
+      </div>
+    </div>
+  </div>
+
+  <button id="start-btn" class="btn-primary" disabled>Start Game</button>
+  <button id="reset-btn-lobby" class="btn-danger mt8">Reset &amp; Clear All</button>
+</div>
+
+<!-- ===== NIGHT ===== -->
+<div id="screen-night" class="screen">
+  <div id="narrator-text">Night has fallen...</div>
+
+  <div id="your-role-banner">
+    Your role: <span class="role-label">—</span>
+  </div>
+
+  <!-- Interactive card table -->
+  <div id="table-area"></div>
+
+  <!-- Center cards always visible -->
+  <div id="center-cards-area"></div>
+
+  <!-- Action prompt panel -->
+  <div id="action-panel" style="display:none;">
+    <div id="action-message"></div>
+    <button id="action-submit" class="btn-primary mt8" disabled>Confirm</button>
+  </div>
+  <div id="action-waiting" style="display:block;">Waiting for your turn...</div>
+</div>
+
+<!-- ===== DAY ===== -->
+<div id="screen-day" class="screen">
+  <h2>☀️ Discussion Phase</h2>
+  <div id="timer-display">05:00</div>
+  <p>Discuss who you think the werewolves are!</p>
+  <ul id="day-players"></ul>
+  <button id="end-day-btn" class="btn-warning mt16">End Discussion Early</button>
+  <button id="reset-btn-day" class="btn-danger mt8">Reset Game</button>
+</div>
+
+<!-- ===== VOTING ===== -->
+<div id="screen-voting" class="screen">
+  <h2>🗳️ Vote to Eliminate</h2>
+  <p>Tap the player you think is a werewolf.</p>
+  <div id="vote-grid"></div>
+  <p id="vote-progress" class="mt8"></p>
+</div>
+
+<!-- ===== RESULTS ===== -->
+<div id="screen-results" class="screen">
+  <div id="win-banner"></div>
+  <p id="eliminated-text"></p>
+
+  <div class="card" style="width:100%;overflow-x:auto;">
+    <table id="results-table">
+      <thead>
+        <tr>
+          <th>Player</th>
+          <th>Start</th>
+          <th>End</th>
+          <th>Voted</th>
+        </tr>
+      </thead>
+      <tbody id="results-tbody"></tbody>
+    </table>
+  </div>
+  <p id="center-results" style="color:var(--muted);font-size:0.85rem;"></p>
+
+  <button id="play-again-btn" class="btn-primary mt8">Play Again</button>
+</div>
+
+<!-- ===== Toast ===== -->
+<div id="toast"></div>
+
+<script type="module" src="/js/game.js"></script>
+<script>
+  // Reset button on day screen
+  document.getElementById("reset-btn-day").addEventListener("click", async () => {
+    if (!confirm("Reset the game?")) return;
+    await fetch("/api/lobby/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  });
+</script>
+</body>
+</html>

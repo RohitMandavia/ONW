@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>One Night Werewolf</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .join-box { width: 100%; max-width: 380px; padding: 32px 24px; }
+  </style>
+</head>
+<body>
+  <div class="join-box">
+    <h1>🐺 One Night<br/>Werewolf</h1>
+    <p class="subtitle">Enter your name to join the game</p>
+    <input id="name-input" type="text" placeholder="Your name" maxlength="20" autocomplete="off" />
+    <button id="join-btn" class="btn-primary">Join Game</button>
+    <p id="error-msg" style="color:var(--accent);display:none;margin-top:8px;"></p>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    // Simple standalone script — no module imports needed here
+    const nameInput = document.getElementById("name-input");
+    const joinBtn = document.getElementById("join-btn");
+    const errorMsg = document.getElementById("error-msg");
+
+    nameInput.addEventListener("keydown", e => { if (e.key === "Enter") joinBtn.click(); });
+
+    joinBtn.addEventListener("click", async () => {
+      const name = nameInput.value.trim();
+      if (!name) { showErr("Enter your name first"); return; }
+
+      joinBtn.disabled = true;
+      try {
+        const r = await fetch("/api/lobby/join", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ player_name: name }),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({ detail: r.statusText }));
+          showErr(err.detail || "Failed to join");
+          joinBtn.disabled = false;
+          return;
+        }
+        const data = await r.json();
+        localStorage.setItem("onw_session", JSON.stringify({ player_id: data.player_id, player_name: name }));
+        location.href = "/game.html";
+      } catch (e) {
+        showErr(e.message);
+        joinBtn.disabled = false;
+      }
+    });
+
+    function showErr(msg) {
+      errorMsg.textContent = msg;
+      errorMsg.style.display = "block";
+    }
+
+    // If already have a session, redirect straight to game
+    const session = JSON.parse(localStorage.getItem("onw_session") || "null");
+    if (session?.player_id) {
+      fetch(`/api/game/reconnect?player_id=${session.player_id}`)
+        .then(r => { if (r.ok) location.href = "/game.html"; })
+        .catch(() => {});
+    }
+  </script>
+</body>
+</html>

@@ -208,7 +208,7 @@ async def run_night_phase() -> None:
         acting = [p for p in game.players.values() if p.original_role == role]
 
         if not acting:
-            await asyncio.sleep(2)
+            await asyncio.sleep(5)
             await ws_manager.broadcast({
                 "type": "night_role_done",
                 "active_role": role.value,
